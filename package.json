@@ -1,26 +1,20 @@
 {
-  "name": "map-ratings",
-  "version": "0.1.0",
+  "name": "maps-enhancement-suite",
   "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
+    "dev": "npm run dev -w @repo/web",
+    "build": "npm run build -w @repo/web",
+    "start": "npm run start -w @repo/web",
+    "dev:extension": "npm run dev -w @repo/extension",
+    "build:extension": "npm run build -w @repo/extension",
+    "test": "npm run test --workspaces --if-present",
+    "test:e2e": "npm run test:e2e -w @repo/extension",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present"
   },
-  "dependencies": {
-    "next": "16.3.6",
-    "react": "19.2.8",
-    "react-dom": "19.2.8"
-  },
-  "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.3.6",
-    "tailwindcss": "^4",
-    "typescript": "^5"
-  }
+  "description": "Personal additions to Google Maps: the Park Picker web app and the Enhancement Suite for Google Maps Chrome extension."
 }

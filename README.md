@@ -1,36 +1,62 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Maps Enhancement Suite
 
-## Getting Started
+Personal additions to Google Maps. The Chrome extension is called
+**Enhancement Suite for Google Maps**. One repository holds every piece:
 
-First, run the development server:
+| Folder | What it is |
+| --- | --- |
+| `apps/web` | **Park Picker**, a web app for rating parks and picking one to go to right now. Installs on a phone as a home-screen app. |
+| `apps/extension` | A **Chrome extension** that shows your Park Picker ratings on Google Maps and fills them into the notes on your Google Maps lists as moons. |
+| `packages/core` | Code both of them use: scoring, moon ratings, the note text, reading Google Maps links, matching places. |
+
+Google Maps has no way for other apps to edit your saved lists. The
+extension works around that by running inside your own signed-in Chrome.
+It only fills the note field you are editing; you still press Done in
+Google Maps yourself.
+
+## Run it
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The web app runs at http://localhost:3000. See `apps/web/README.md`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Build the extension, then load `apps/extension/dist` in Chrome:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run build:extension
+```
 
-## Learn More
+See `apps/extension/README.md` for the steps.
 
-To learn more about Next.js, take a look at the following resources:
+## Commands
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Run these from this folder.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Start the web app |
+| `npm run build` | Production build of the web app |
+| `npm run dev:extension` | Rebuild the extension on every change |
+| `npm run build:extension` | Build the extension into `apps/extension/dist` |
+| `npm test` | Unit tests (shared code) |
+| `npm run test:e2e` | Load the extension in Chromium and test it on real Google Maps pages |
+| `npm run typecheck` | Type-check every package |
+| `npm run lint` | Lint the web app |
 
-## Deploy on Vercel
+## How the pieces share code
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+This is an npm workspaces monorepo. `packages/core` is never published.
+npm links it into `node_modules/@repo/core`, and both apps import it as
+`@repo/core`. A change to it reaches both apps on their next build.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The `@repo/` prefix is only a local name. It does not need to change if
+the repository is renamed.
+
+## Deploying
+
+Deploy `apps/web` (for example on Vercel, with the project's Root
+Directory set to `apps/web`). See `apps/web/README.md` for the database
+settings. Then put the deployed URL in the extension's settings.

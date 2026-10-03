@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Enhancement Suite for Google Maps</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Enhancement Suite for Google Maps</h1>
+      <h2>🌙 Park Picker</h2>
+      <p class="muted">Copy these two values from the Settings page of the Park Picker web app.</p>
+      <label>App URL <input id="appUrl" type="url" spellcheck="false" placeholder="http://localhost:3000" /></label>
+      <label>Token <input id="token" type="text" spellcheck="false" autocomplete="off" class="mono" /></label>
+      <button id="save" type="button">Save and test</button>
+      <p id="status" role="status"></p>
+      <details>
+        <summary>How to use it</summary>
+        <ol>
+          <li>Open one of your lists in Google Maps on this computer.</li>
+          <li>Click a place. The Park Picker panel appears at the top right.</li>
+          <li>The first time, press Link (or Add) to connect it to your saved place.</li>
+          <li>Click into the place's note, then press <b>Fill note</b> or <span id="shortcut">Alt+Shift+M</span>.</li>
+          <li>Press Done in Google Maps to save the note.</li>
+        </ol>
+      </details>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

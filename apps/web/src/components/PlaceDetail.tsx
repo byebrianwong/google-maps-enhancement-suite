@@ -1,12 +1,12 @@
 "use client";
 
-import { ArrowLeft, Check, Copy, ExternalLink, Navigation, Pencil, RefreshCw, Trash2, X } from "lucide-react";
+import { ArrowLeft, Check, Copy, ExternalLink, Navigation, Pencil, RefreshCw, SlidersHorizontal, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useOptimistic, useState, useTransition } from "react";
 import type { Origin, Visit } from "@/db/schema";
-import { buildNote, googleMapsPlaceUrl } from "@repo/core";
+import { buildNote, googleMapsPlaceUrl, noteInputFor, type NoteTarget } from "@repo/core";
 import { deletePlace, deleteVisit, logVisit, setPlaceTypes, setRating, unlinkGoogle, updatePlace } from "@/lib/actions";
-import { useTravelTimes } from "@/lib/hooks";
+import { useLocalState, useTravelTimes } from "@/lib/hooks";
 import type { PlaceSummary, Settings, TypeWithCriteria } from "@/lib/queries";
 import { TRAVEL_MODES, scoreColor, scoreForType, type TravelMode } from "@repo/core";
 import { formatDistance } from "@repo/core";
@@ -51,6 +51,16 @@ export function PlaceDetail({ place, types, origins, settings }: Props) {
   const t = travel.times[place.id];
 
   const taggedTypes = types.filter((ty) => typeIds.includes(ty.id));
+  const liveScores = Object.fromEntries(taggedTypes.map((ty) => [ty.id, scoreForType(ratingMap, ty.criteria)?.score ?? null]));
+  const notePlace = { typeIds, scores: liveScores, ratings: ratingMap, lastVisitAt: place.lastVisitAt };
+  const noteOptions = [
+    { id: "all", label: "All types", note: buildNote(noteInputFor(notePlace, taggedTypes)) },
+    ...taggedTypes.map((ty) => ({
+      id: ty.id,
+      label: `${ty.emoji} ${ty.googleListName || ty.name}`,
+      note: buildNote(noteInputFor(notePlace, taggedTypes, ty.id)),
+    })),
+  ];
 
   function rate(criterionId: string, value: number | null) {
     startTransition(async () => {
@@ -162,10 +172,7 @@ export function PlaceDetail({ place, types, origins, settings }: Props) {
           </div>
 
           <GoogleNoteCard
-            note={buildNote({
-              types: taggedTypes.map((ty) => ({ emoji: ty.emoji, score: scoreForType(ratingMap, ty.criteria)?.score ?? null })),
-              lastVisitAt: place.lastVisitAt,
-            })}
+            options={noteOptions}
             googleUrl={googleMapsPlaceUrl({ fid: place.googleFid, name: place.googleName ?? place.name, lat: place.lat, lng: place.lng })}
             linkedName={place.googleFid ? place.googleName ?? place.name : null}
             onUnlink={() => startTransition(() => unlinkGoogle(place.id))}
@@ -229,6 +236,14 @@ export function PlaceDetail({ place, types, origins, settings }: Props) {
                   <div className="font-semibold">{ty.emoji} {ty.name}</div>
                   <ScoreBadge score={s?.score} />
                   <span className="text-xs text-ink-3">{s ? `${s.rated}/${s.total} rated` : "not rated"}</span>
+                  <Link
+                    href={`/settings/types/${ty.id}`}
+                    className="btn btn-ghost btn-sm ml-auto text-ink-3"
+                    title={`Change what you rate for ${ty.name} and how it adds up`}
+                    aria-label={`Edit ${ty.name} criteria`}
+                  >
+                    <SlidersHorizontal size={14} />
+                  </Link>
                 </div>
                 <ScoreBar score={s?.score} />
                 {ty.criteria.length === 0 && <p className="text-sm text-ink-3">This type has no criteria yet. Add some in Settings.</p>}
@@ -238,7 +253,14 @@ export function PlaceDetail({ place, types, origins, settings }: Props) {
                     return (
                       <li key={c.id}>
                         <div className="flex items-baseline justify-between">
-                          <div className="text-sm font-medium">{c.label}</div>
+                          <div className="text-sm font-medium">
+                            {c.label}
+                            {!(c.weight > 0) && (
+                              <span className="ml-2 text-[11px] font-normal text-ink-3" title="Rated and shown, but left out of the score">
+                                not counted in score
+                              </span>
+                            )}
+                          </div>
                           {v != null && (
                             <button className="text-[11px] text-ink-3 underline" onClick={() => rate(c.id, null)}>clear</button>
                           )}
@@ -358,20 +380,34 @@ function VisitForm({
 // lists. Copy works on a phone too: copy here, then paste into the note in
 // the Google Maps app.
 function GoogleNoteCard({
-  note,
+  options,
   googleUrl,
   linkedName,
   onUnlink,
 }: {
-  note: string;
+  options: { id: NoteTarget; label: string; note: string }[]; // "all" first, then one per type's list
   googleUrl: string;
   linkedName: string | null;
   onUnlink: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  // Remembered across places, since you usually go through one list at a time.
+  const [target, setTarget] = useLocalState<NoteTarget>("place.noteTarget", "all");
+  const chosen = options.find((o) => o.id === target) ?? options[0];
+  const note = chosen.note;
   return (
     <div className="card p-3 space-y-2">
       <div className="label !mb-0">Google Maps note</div>
+      {options.length > 1 && (
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Note for which list">
+          <span className="text-xs text-ink-3 mr-1">For</span>
+          {options.map((o) => (
+            <button key={o.id} type="button" className="chip !py-1 !px-2.5 !text-xs" data-active={o.id === chosen.id} onClick={() => setTarget(o.id)}>
+              {o.id === "all" ? o.label : `${o.label} list`}
+            </button>
+          ))}
+        </div>
+      )}
       <pre className="rounded-xl bg-surface-2 p-3 text-base leading-7 whitespace-pre-wrap font-sans">{note}</pre>
       <div className="flex flex-wrap gap-2">
         <button

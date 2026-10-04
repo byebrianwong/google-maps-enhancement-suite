@@ -55,7 +55,14 @@ export async function checkExtensionAuth(req: Request): Promise<Response | null>
 }
 
 export function toExtType(t: TypeWithCriteria): ExtType {
-  return { id: t.id, name: t.name, emoji: t.emoji };
+  return {
+    id: t.id,
+    name: t.name,
+    emoji: t.emoji,
+    listName: t.googleListName || t.name,
+    noteShowsRatings: t.noteShowsRatings,
+    criteria: t.criteria.map((c) => ({ id: c.id, label: c.label })),
+  };
 }
 
 export function toExtPlace(p: PlaceSummary): ExtPlace {
@@ -68,6 +75,7 @@ export function toExtPlace(p: PlaceSummary): ExtPlace {
     lng: p.lng,
     typeIds: p.typeIds,
     scores,
+    ratings: p.ratingMap,
     lastVisitAt: p.lastVisitAt,
     googleFid: p.googleFid,
     googleName: p.googleName,

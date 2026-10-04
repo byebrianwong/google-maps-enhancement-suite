@@ -41,6 +41,12 @@ button.chip { font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
 button.chip[aria-pressed="true"] { background: #1b2419; border-color: #1b2419; color: #fff; }
 .status { font-size: 12px; padding: 6px 8px; border-radius: 8px; background: #e2f3e8; color: #22543d; }
 .status.warn { background: #fdf3e1; color: #7b4a0e; }
+.label { font-size: 11px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; color: #8a9584; margin-bottom: -4px; }
+pre.note {
+  margin: 0; white-space: pre-wrap; word-break: break-word; font: inherit; font-size: 12px; line-height: 1.5;
+  background: #f6f7f2; border: 1px solid #dfe4d7; border-radius: 10px; padding: 6px 8px;
+  max-height: 140px; overflow: auto;
+}
 .nearby { display: grid; gap: 4px; }
 .nearby button { text-align: left; }
 `;

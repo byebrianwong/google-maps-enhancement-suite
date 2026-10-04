@@ -3,7 +3,8 @@
 // It starts the web app on port 3100 with its own throwaway database (your
 // real data is never touched), loads the built extension into Playwright's
 // Chromium, and checks: settings popup, matching and linking a place,
-// adding a new place, and filling a note field.
+// adding a new place, and filling a note field, for all types and for one
+// type's Google Maps list.
 //
 // Google Maps is used signed out, so there is no real list note to edit.
 // The fill test uses a text box the test adds to the Google Maps page.
@@ -101,6 +102,7 @@ try {
   await run("npm", ["run", "setup"], { cwd: webDir, env });
   const db = createClient({ url: `file:${dbFile}` });
   await db.execute({ sql: "insert into settings(key, value) values ('extensionToken', ?)", args: [TOKEN] });
+  await db.execute("update place_types set google_list_name = 'Dog parks' where id = 'dog'");
   const now = Date.now();
   const visitAt = Date.UTC(2026, 8, 25, 18, 0);
   await db.execute({
@@ -120,6 +122,7 @@ try {
   });
   const visitLabel = new Date(visitAt).toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const expectedBlock = `🐕 🌕🌕🌕🌕🌗 4.5\n👶 🌕🌕🌕🌑🌑 3.0\n🌙 Park Picker · last visit ${visitLabel}`;
+  const dogListBlock = `🐕 🌕🌕🌕🌕🌗 4.5\nGrass quality 5/5 · Room to run 4/5\n🌙 Park Picker · last visit ${visitLabel}`;
 
   // 2. The web app on its own port.
   server = spawn("npx", ["next", "dev", "-p", String(PORT)], { cwd: webDir, env, stdio: ["ignore", "pipe", "pipe"] });
@@ -134,6 +137,12 @@ try {
   check("API refuses requests without the token", denied.status === 401, `HTTP ${denied.status}`);
   const allowed = await fetch(`${APP}/api/ext/places`, { headers: { Authorization: `Bearer ${TOKEN}` } });
   check("API answers with the token", allowed.status === 200, `HTTP ${allowed.status}`);
+  const apiBody = await allowed.json();
+  const apiDog = apiBody.types.find((t) => t.id === "dog");
+  check(
+    "API sends each type's list name, criteria and the place's ratings",
+    apiDog?.listName === "Dog parks" && apiDog?.criteria.length === 7 && apiBody.places[0]?.ratings["dog-grass"] === 5,
+  );
 
   // 3. Chromium with the extension. "--headless=new" keeps extensions working.
   ctx = await chromium.launchPersistentContext(path.join(work, "profile"), {
@@ -209,6 +218,30 @@ try {
   await page.waitForFunction(() => document.getElementById("e2e-note").value.startsWith("🐕"));
   check("the shortcut's message fills the note", (await page.inputValue("#e2e-note")) === `${expectedBlock}\nonly my text`);
 
+  // 6b. The note for one type's list: that type's score and its ratings.
+  await panel.getByRole("button", { name: "🐕 Dog parks" }).click();
+  check("the preview shows the Dog parks note", (await panel.locator("pre.note").innerText()) === dogListBlock);
+  await page.focus("#e2e-note"); // it holds the all-types note and "only my text"
+  await panel.getByRole("button", { name: "Fill note" }).click();
+  check(
+    "Fill for the Dog parks list replaces the block and keeps the person's text",
+    (await page.inputValue("#e2e-note")) === `${dogListBlock}\nonly my text`,
+    JSON.stringify(await page.inputValue("#e2e-note")),
+  );
+  await page.screenshot({ path: path.join(shots, "4b-dog-list.png") });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await panel.getByRole("button", { name: "Fill note" }).waitFor({ timeout: 20_000 });
+  await page.waitForFunction(
+    () => document.getElementById("maps-enhancement-suite")?.shadowRoot?.querySelector('button.chip[aria-pressed="true"]')?.textContent === "🐕 Dog parks",
+    null,
+    { timeout: 5_000 },
+  ).catch(() => {});
+  check(
+    "the chosen list is remembered after a reload",
+    (await panel.locator('button.chip[aria-pressed="true"]').innerText()) === "🐕 Dog parks",
+  );
+  await panel.getByRole("button", { name: "All types" }).click();
+
   // It must not write into Google's search box.
   await page.locator('input[name="q"]').first().focus();
   const before = await page.locator('input[name="q"]').first().inputValue();
@@ -228,6 +261,9 @@ try {
   check("Add creates the place, linked to Google", created?.name === "Corona Heights Dog Run" && created?.source === "google");
   const tags = await db.execute({ sql: "select type_id from place_type_tags where place_id = ?", args: [created?.id ?? ""] });
   check("Add uses the chosen types", tags.rows.map((r) => r.type_id).join(",") === "dog", tags.rows.map((r) => r.type_id).join(","));
+  await panel.getByRole("button", { name: "👶 Baby park" }).click();
+  check("a list for a type the place doesn't have says so", (await panel.innerText()).includes("isn't a Baby park in Park Picker"));
+  await panel.getByRole("button", { name: "All types" }).click();
   await page.screenshot({ path: path.join(shots, "6-added.png") });
 
   // 8. Back to the first place: now matched by its stored link.

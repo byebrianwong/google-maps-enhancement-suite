@@ -1,9 +1,10 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { MAX_WEIGHT } from "@repo/core";
 import { db } from "@/db";
 import {
   criteria,
@@ -219,53 +220,93 @@ export async function clearTravelCache() {
 
 // ---- Place types and criteria ---------------------------------------------
 
+const typeFields = z.object({
+  name: z.string().trim().min(1).max(40),
+  emoji: z.string().trim().min(1).max(8),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+});
+
+// Makes the type and opens its editor, where its criteria are added.
 export async function createPlaceType(raw: { name: string; emoji: string; color: string }) {
-  const input = z
-    .object({
-      name: z.string().trim().min(1).max(40),
-      emoji: z.string().trim().min(1).max(8),
-      color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
-    })
-    .parse(raw);
-  const slug =
+  const input = typeFields.parse(raw);
+  const base =
     input.name
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "") || id().slice(0, 8);
-  const count = await db.select({ id: placeTypes.id }).from(placeTypes);
-  await db.insert(placeTypes).values({ id: slug, ...input, sort: count.length });
+  const existing = await db.select({ id: placeTypes.id }).from(placeTypes);
+  const taken = new Set(existing.map((t) => t.id));
+  let slug = base;
+  for (let n = 2; taken.has(slug); n++) slug = `${base}-${n}`;
+  await db.insert(placeTypes).values({ id: slug, ...input, sort: existing.length });
   revalidateAll();
+  redirect(`/settings/types/${slug}`);
+}
+
+const typeInput = typeFields.extend({
+  googleListName: z.string().trim().max(80).nullable(),
+  noteShowsRatings: z.boolean(),
+  // In display order. A criterion without an id is new. An existing
+  // criterion left out of the list is deleted, with its ratings.
+  criteria: z
+    .array(
+      z.object({
+        id: z.string().optional(),
+        label: z.string().trim().min(1).max(60),
+        lowLabel: z.string().trim().max(60),
+        highLabel: z.string().trim().max(60),
+        weight: z.number().min(0).max(MAX_WEIGHT),
+      }),
+    )
+    .max(40),
+});
+
+export type TypeInput = z.input<typeof typeInput>;
+
+// Saves everything the type editor shows, in one transaction.
+export async function saveType(typeId: string, raw: TypeInput) {
+  const input = typeInput.parse(raw);
+  const [type] = await db.select({ id: placeTypes.id }).from(placeTypes).where(eq(placeTypes.id, typeId));
+  if (!type) throw new Error("This type no longer exists.");
+  const existing = await db.select({ id: criteria.id }).from(criteria).where(eq(criteria.typeId, typeId));
+  const existingIds = new Set(existing.map((c) => c.id));
+  for (const c of input.criteria) {
+    if (c.id && !existingIds.has(c.id)) throw new Error(`Criterion ${c.id} does not belong to this type.`);
+  }
+  const kept = new Set(input.criteria.flatMap((c) => (c.id ? [c.id] : [])));
+  const removed = [...existingIds].filter((cid) => !kept.has(cid));
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(placeTypes)
+      .set({
+        name: input.name,
+        emoji: input.emoji,
+        color: input.color,
+        googleListName: input.googleListName || null,
+        noteShowsRatings: input.noteShowsRatings,
+      })
+      .where(eq(placeTypes.id, typeId));
+    if (removed.length > 0) {
+      // Ratings would also go by the foreign key, but only where SQLite
+      // enforces foreign keys, so delete them by hand.
+      await tx.delete(ratings).where(inArray(ratings.criterionId, removed));
+      await tx.delete(criteria).where(inArray(criteria.id, removed));
+    }
+    for (const [sort, c] of input.criteria.entries()) {
+      const values = { label: c.label, lowLabel: c.lowLabel, highLabel: c.highLabel, weight: c.weight, sort };
+      if (c.id) await tx.update(criteria).set(values).where(eq(criteria.id, c.id));
+      else await tx.insert(criteria).values({ id: `${typeId}-${id().slice(0, 8)}`, typeId, ...values });
+    }
+  });
+  // Scores change on every page that shows them.
+  revalidatePath("/", "layout");
 }
 
 export async function deletePlaceType(typeId: string) {
   await db.delete(placeTypes).where(eq(placeTypes.id, typeId));
-  revalidateAll();
-}
-
-export async function createCriterion(raw: {
-  typeId: string;
-  label: string;
-  lowLabel: string;
-  highLabel: string;
-  weight?: number;
-}) {
-  const input = z
-    .object({
-      typeId: z.string(),
-      label: z.string().trim().min(1).max(60),
-      lowLabel: z.string().trim().min(1).max(60),
-      highLabel: z.string().trim().min(1).max(60),
-      weight: z.number().min(0.1).max(5).default(1),
-    })
-    .parse(raw);
-  const existing = await db.select({ id: criteria.id }).from(criteria).where(eq(criteria.typeId, input.typeId));
-  await db.insert(criteria).values({ id: `${input.typeId}-${id().slice(0, 8)}`, ...input, sort: existing.length });
-  revalidateAll();
-}
-
-export async function deleteCriterion(criterionId: string) {
-  await db.delete(criteria).where(eq(criteria.id, criterionId));
-  revalidateAll();
+  revalidatePath("/", "layout");
+  redirect("/settings");
 }
 
 // ---- Google Maps link and the Chrome extension ------------------------------

@@ -15,6 +15,11 @@ export const placeTypes = sqliteTable("place_types", {
   emoji: text("emoji").notNull(),
   color: text("color").notNull(), // hex, used for map markers
   sort: integer("sort").notNull().default(0),
+  // The matching list in Google Maps, e.g. "Dog parks". Only a label: the
+  // extension shows it so you can pick which list you are filling notes in.
+  googleListName: text("google_list_name"),
+  // Whether a note for this type's list shows each rating below the score.
+  noteShowsRatings: integer("note_shows_ratings", { mode: "boolean" }).notNull().default(true),
 });
 
 // One thing you rate about a place, scoped to a type. Rated 1 to 5.
@@ -26,6 +31,8 @@ export const criteria = sqliteTable("criteria", {
   label: text("label").notNull(),
   lowLabel: text("low_label").notNull(), // what a 1 means
   highLabel: text("high_label").notNull(), // what a 5 means
+  // How much this counts in the type's overall score. 0 means it is rated
+  // and shown but left out of the score. See scoreForType in @repo/core.
   weight: real("weight").notNull().default(1),
   sort: integer("sort").notNull().default(0),
 });

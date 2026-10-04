@@ -1,6 +1,12 @@
 // Runs on Google Maps pages. Shows a small panel with your rating for the
 // place that is open, and fills it into the note field you are editing.
 //
+// You pick which of your Google Maps lists the note is for. "All types"
+// writes one line per type. One type's list, say "Dog parks", writes that
+// type's score and, if the type is set to, each of its ratings. Google's
+// page does not say which list you are in, so the choice is yours, and it is
+// remembered because you usually go through one list at a time.
+//
 // It does not click around Google Maps on its own. You open the place's note
 // in your list, then press "Fill note" (or the keyboard shortcut). The panel
 // writes the moons into that field, keeps your own text below them, and you
@@ -17,6 +23,7 @@ import {
   noteInputFor,
   parseGoogleMapsUrl,
   type ExtPlace,
+  type NoteTarget,
   type ExtPlacesResponse,
   type GooglePlaceRef,
   type MatchResult,
@@ -36,6 +43,7 @@ if (!window.__mapsEnhancementSuiteLoaded) {
 }
 
 const COLLAPSED_KEY = "mapsEnhancementSuite.parkPicker.collapsed";
+const NOTE_TARGET_KEY = "noteTarget"; // in chrome.storage.local
 
 type Status = { text: string; tone: "ok" | "warn" };
 
@@ -52,6 +60,7 @@ type State = {
   status: Status | null;
   addTypeIds: string[] | null; // null means "all types"
   rejected: Set<string>; // "placeKey|appPlaceId" pairs the person said were wrong
+  noteTarget: NoteTarget; // which list the note is for
 };
 
 function main() {
@@ -94,11 +103,22 @@ function main() {
     status: null,
     addTypeIds: null,
     rejected: new Set(),
+    noteTarget: "all",
   };
 
   try {
     state.collapsed = sessionStorage.getItem(COLLAPSED_KEY) === "1";
   } catch {}
+  chrome.storage.local
+    .get(NOTE_TARGET_KEY)
+    .then((stored) => {
+      const saved = stored[NOTE_TARGET_KEY];
+      if (typeof saved === "string" && saved !== state.noteTarget) {
+        state.noteTarget = saved;
+        render();
+      }
+    })
+    .catch(() => {});
 
   function setStatus(text: string, tone: Status["tone"] = "ok") {
     state.status = { text, tone };
@@ -139,8 +159,21 @@ function main() {
     return matchPlace(state.ref, usable);
   }
 
+  // The chosen list, or "all" if that type has since been deleted.
+  function noteTarget(): NoteTarget {
+    const types = state.data?.types ?? [];
+    return types.some((t) => t.id === state.noteTarget) ? state.noteTarget : "all";
+  }
+
+  function setNoteTarget(target: NoteTarget) {
+    state.noteTarget = target;
+    state.status = null;
+    chrome.storage.local.set({ [NOTE_TARGET_KEY]: target }).catch(() => {});
+    render();
+  }
+
   function noteFor(place: ExtPlace): string {
-    return buildNote(noteInputFor(place, state.data?.types ?? []));
+    return buildNote(noteInputFor(place, state.data?.types ?? [], noteTarget()));
   }
 
   function replacePlace(place: ExtPlace) {
@@ -289,7 +322,10 @@ function main() {
   }
 
   function renderLinked(body: HTMLElement, place: ExtPlace) {
-    const types = (state.data?.types ?? []).filter((t) => place.typeIds.includes(t.id));
+    const allTypes = state.data?.types ?? [];
+    const types = allTypes.filter((t) => place.typeIds.includes(t.id));
+    const target = noteTarget();
+    const targetType = allTypes.find((t) => t.id === target);
     body.append(
       el("div", { class: "title" }, [
         el("a", { href: `${state.config.appUrl}/places/${place.id}`, target: "_blank", rel: "noopener" }, [place.name]),
@@ -309,6 +345,14 @@ function main() {
       el("div", { class: "muted" }, [
         place.lastVisitAt ? `Last visit ${formatShortDate(place.lastVisitAt)}` : "No visits logged",
       ]),
+      el("div", { class: "label" }, ["Note for"]),
+      el("div", { class: "chips", role: "group", "aria-label": "Note for which list" }, [
+        chip("All types", target === "all", () => setNoteTarget("all"), "One line per type, for lists that mix types"),
+        ...allTypes.map((t) =>
+          chip(`${t.emoji} ${t.listName}`, target === t.id, () => setNoteTarget(t.id), `For your "${t.listName}" list in Google Maps`),
+        ),
+      ]),
+      el("pre", { class: "note", "aria-label": "The note Fill writes" }, [noteFor(place)]),
       el("div", { class: "actions" }, [
         button("Fill note", fill, { primary: true, title: "Fill the note field you clicked into (Alt+Shift+M)" }),
         button("Copy", copy),
@@ -317,6 +361,11 @@ function main() {
         "In your Google Maps list, click this place's note, then press Fill note or Alt+Shift+M. Then press Done.",
       ]),
     );
+    if (targetType && !place.typeIds.includes(targetType.id)) {
+      body.querySelector("pre.note")?.before(
+        el("div", { class: "status warn" }, [`${place.name} isn't a ${targetType.name} in Park Picker, so this note has no score.`]),
+      );
+    }
   }
 
   function renderLikely(body: HTMLElement, place: ExtPlace, meters: number) {
@@ -406,6 +455,12 @@ function button(
   const b = el("button", { class: `btn${opts.primary ? " primary" : ""}`, type: "button" }, [label]) as HTMLButtonElement;
   if (opts.title) b.title = opts.title;
   b.disabled = !!opts.disabled;
+  b.addEventListener("click", onClick);
+  return b;
+}
+
+function chip(label: string, on: boolean, onClick: () => void, title: string): HTMLElement {
+  const b = el("button", { class: "chip", type: "button", "aria-pressed": String(on), title }, [label]);
   b.addEventListener("click", onClick);
   return b;
 }

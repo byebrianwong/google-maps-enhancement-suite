@@ -1,16 +1,14 @@
 "use client";
 
-import { Check, Copy, Crosshair, Plus, Star, Trash2 } from "lucide-react";
+import { Check, ChevronRight, Copy, Crosshair, Plus, Star, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useState, useSyncExternalStore, useTransition } from "react";
 import type { Origin } from "@/db/schema";
 import {
   clearTravelCache,
-  createCriterion,
   createOrigin,
   createPlaceType,
-  deleteCriterion,
   deleteOrigin,
-  deletePlaceType,
   resetExtensionToken,
   saveSettings,
   setDefaultOrigin,
@@ -46,11 +44,20 @@ export function SettingsPanel({ origins, settings, types, providerLabel, extensi
       </section>
 
       <section className="card p-4 space-y-3">
-        <h2 className="font-semibold">Place types and criteria</h2>
-        <p className="text-sm text-ink-2">Each type has its own checklist. Ratings are 1 to 5. Weight makes a criterion count more or less in the score.</p>
-        {types.map((t) => (
-          <TypeEditor key={t.id} type={t} />
-        ))}
+        <div>
+          <h2 className="font-semibold">Place types</h2>
+          <p className="text-sm text-ink-2 mt-0.5">
+            Each type has its own list of things you rate and its own way of adding them up into one score. A type can
+            match one of your Google Maps lists.
+          </p>
+        </div>
+        <ul className="space-y-2">
+          {types.map((t) => (
+            <li key={t.id}>
+              <TypeRow type={t} />
+            </li>
+          ))}
+        </ul>
         <NewTypeForm />
       </section>
 
@@ -249,77 +256,23 @@ function Defaults({ settings }: { settings: Settings }) {
 
 // ---- Types -----------------------------------------------------------------
 
-function TypeEditor({ type }: { type: TypeWithCriteria }) {
-  const [pending, startTransition] = useTransition();
-  const [open, setOpen] = useState(false);
-  const [label, setLabel] = useState("");
-  const [low, setLow] = useState("");
-  const [high, setHigh] = useState("");
-  const [weight, setWeight] = useState(1);
+function TypeRow({ type }: { type: TypeWithCriteria }) {
+  const notCounted = type.criteria.filter((c) => !(c.weight > 0)).length;
+  const details = [
+    `${type.criteria.length} ${type.criteria.length === 1 ? "criterion" : "criteria"}`,
+    notCounted > 0 ? `${notCounted} not counted` : null,
+    `Google Maps list: ${type.googleListName || type.name}`,
+  ].filter(Boolean);
   return (
-    <div className="rounded-xl border border-line overflow-hidden">
-      <button className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-surface-2" onClick={() => setOpen((v) => !v)}>
-        <span className="text-lg">{type.emoji}</span>
-        <span className="font-medium flex-1">{type.name}</span>
-        <span className="text-xs text-ink-3">{type.criteria.length} criteria</span>
-        <span className="text-ink-3 text-xs">{open ? "▲" : "▼"}</span>
-      </button>
-      {open && (
-        <div className="px-3 pb-3 space-y-2 border-t border-line">
-          <ul className="divide-y divide-line">
-            {type.criteria.map((c) => (
-              <li key={c.id} className="py-2 flex items-center gap-2 text-sm">
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium">{c.label} <span className="text-xs text-ink-3 font-normal">× {c.weight}</span></div>
-                  <div className="text-xs text-ink-3">1 = {c.lowLabel} · 5 = {c.highLabel}</div>
-                </div>
-                <button
-                  className="btn btn-ghost btn-sm text-ink-3"
-                  disabled={pending}
-                  onClick={() => {
-                    if (confirm(`Remove "${c.label}"? Existing ratings for it are deleted.`)) startTransition(() => deleteCriterion(c.id));
-                  }}
-                >
-                  <Trash2 size={14} />
-                </button>
-              </li>
-            ))}
-          </ul>
-          <div className="rounded-lg bg-surface-2 p-2 grid grid-cols-2 gap-2">
-            <input className="input col-span-2 !py-1.5 text-sm" placeholder="New criterion, e.g. Parking" value={label} onChange={(e) => setLabel(e.target.value)} />
-            <input className="input !py-1.5 text-sm" placeholder="1 means…" value={low} onChange={(e) => setLow(e.target.value)} />
-            <input className="input !py-1.5 text-sm" placeholder="5 means…" value={high} onChange={(e) => setHigh(e.target.value)} />
-            <label className="text-xs text-ink-3 flex items-center gap-2">
-              Weight
-              <input type="number" step={0.25} min={0.25} max={5} className="input !py-1 !w-20 text-sm" value={weight} onChange={(e) => setWeight(Number(e.target.value))} />
-            </label>
-            <button
-              className="btn btn-primary btn-sm"
-              disabled={pending || !label.trim() || !low.trim() || !high.trim()}
-              onClick={() =>
-                startTransition(async () => {
-                  await createCriterion({ typeId: type.id, label, lowLabel: low, highLabel: high, weight });
-                  setLabel("");
-                  setLow("");
-                  setHigh("");
-                })
-              }
-            >
-              <Plus size={14} /> Add criterion
-            </button>
-          </div>
-          <button
-            className="btn btn-danger btn-sm"
-            disabled={pending}
-            onClick={() => {
-              if (confirm(`Delete the "${type.name}" type, its criteria and all its ratings?`)) startTransition(() => deletePlaceType(type.id));
-            }}
-          >
-            <Trash2 size={14} /> Delete type
-          </button>
-        </div>
-      )}
-    </div>
+    <Link href={`/settings/types/${type.id}`} className="flex items-center gap-3 rounded-xl border border-line px-3 py-2.5 hover:bg-surface-2">
+      <span className="text-xl">{type.emoji}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block font-medium">{type.name}</span>
+        <span className="block text-xs text-ink-3 truncate">{details.join(" · ")}</span>
+      </span>
+      <span className="text-xs font-semibold text-ink-2 hidden sm:inline">Edit</span>
+      <ChevronRight size={16} className="text-ink-3" />
+    </Link>
   );
 }
 
@@ -345,12 +298,7 @@ function NewTypeForm() {
       <button
         className="btn btn-primary"
         disabled={pending || !name.trim()}
-        onClick={() =>
-          startTransition(async () => {
-            await createPlaceType({ name, emoji, color });
-            setName("");
-          })
-        }
+        onClick={() => startTransition(() => createPlaceType({ name, emoji, color }))}
       >
         <Plus size={14} /> Add type
       </button>

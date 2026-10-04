@@ -19,11 +19,18 @@ checklist. You can add more types and criteria in Settings.
   travel time from each starting point, move the pin, add notes.
 - **Add**: search by name or address, "find parks near map center" using
   OpenStreetMap, or tap the map to drop a pin.
-- **Settings**: starting points (Home, Work, ...), defaults, place types and
-  criteria, travel-time provider, and the token for the Chrome extension.
+- **Settings**: starting points (Home, Work, ...), defaults, place types,
+  travel-time provider, and the token for the Chrome extension.
+- **Place type editor** (Settings, then a type): what you rate for that type,
+  what a 1 and a 5 mean for each criterion, and how much each one counts in
+  the overall score. A criterion can count 0 to 3 times; at 0 it is still
+  rated and shown but left out of the score. The page previews the change on
+  your own places, and the Google Maps note, before you save. Each type can
+  name its Google Maps list (for example "Dog parks").
 - **Google Maps note**: each place page shows the note the Chrome extension
   writes into your Google Maps lists, with a Copy button for doing it by
-  hand on a phone.
+  hand on a phone. Pick "All types" for one line per type, or one type's
+  list for that type's score with each rating below it.
 
 It is a web app that installs to a phone home screen as a PWA. Same code on
 desktop and mobile.

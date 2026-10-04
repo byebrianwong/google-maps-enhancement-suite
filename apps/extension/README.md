@@ -11,6 +11,18 @@ it into that place's note in your Google Maps lists:
 Your own note stays here, below the moons.
 ```
 
+In one type's list, for example your "Dog parks" list, the note can show
+that type's score and each rating instead:
+
+```
+🐕 🌕🌕🌕🌕🌗 4.5
+Grass quality 5/5 · Room to run 4/5
+🌙 Park Picker · last visit Sep 25
+```
+
+What you rate, and how much each rating counts, is set per type in the web
+app: Settings, then the type.
+
 ## Install
 
 1. From the repo root: `npm run build:extension`.
@@ -30,9 +42,15 @@ rebuilds on every save.
    - **Link** connects them, the first time only. After that the match uses
      Google's place id.
    - If the place is not in Park Picker, **Add to Park Picker** saves it.
-3. Click into the place's note in your list. Press **Fill note**, or
+3. Under **Note for**, pick the list you are working in: **All types**, or
+   one type's list (named in the web app's type settings). The panel
+   shows the exact note it will write. The choice is remembered, because
+   you usually go through one list at a time. Google Maps does not show
+   which list you are in on the page, so the extension cannot pick it for
+   you.
+4. Click into the place's note in your list. Press **Fill note**, or
    **Alt+Shift+M** (change it at `chrome://extensions/shortcuts`).
-4. Press Done in Google Maps to save the note.
+5. Press Done in Google Maps to save the note.
 
 Filling again replaces only the moons block at the top. Anything you wrote
 below it is kept. The panel refuses to fill Google's search box.
@@ -74,6 +92,7 @@ npm run test:e2e
 
 This starts the web app on port 3100 with a throwaway database, loads the
 extension into Playwright's Chromium, and checks linking, adding, filling
-and the settings popup on real Google Maps pages. It can run while
+(for all types and for one type's list) and the settings popup on real
+Google Maps pages. It can run while
 `npm run dev` is running: the test server builds into `apps/web/.next-e2e`.
 If no Chromium is found, run `npx playwright-core install chromium`.

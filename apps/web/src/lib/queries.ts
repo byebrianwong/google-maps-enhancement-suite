@@ -74,6 +74,15 @@ export async function getPlace(id: string): Promise<(PlaceSummary & { visits: Vi
   return { ...p, visits: vs };
 }
 
+// How many places have a rating for each criterion, by criterion id.
+export async function getRatingCounts(): Promise<Record<string, number>> {
+  const rows = await db
+    .select({ criterionId: ratings.criterionId, count: sql<number>`count(*)` })
+    .from(ratings)
+    .groupBy(ratings.criterionId);
+  return Object.fromEntries(rows.map((r) => [r.criterionId, Number(r.count)]));
+}
+
 export async function getOrigins(): Promise<Origin[]> {
   return db.select().from(origins).orderBy(desc(origins.isDefault), asc(origins.sort), asc(origins.name));
 }

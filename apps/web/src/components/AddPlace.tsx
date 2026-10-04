@@ -130,7 +130,7 @@ export function AddPlace({ types, origins }: { types: TypeWithCriteria[]; origin
     .map((d) => ({ id: d.osmId, lat: d.lat, lng: d.lng, label: d.name, emoji: KIND_EMOJI[d.kind] ?? "🌳", candidate: true }));
 
   return (
-    <div className="flex-1 flex flex-col md:flex-row md:h-[calc(100dvh-3.5rem)]">
+    <div className="flex-1 md:flex-none flex flex-col md:flex-row md:h-[calc(100dvh-3.5rem)]">
       <section className="md:w-[440px] md:shrink-0 md:overflow-y-auto md:border-r border-line order-2 md:order-1">
         <div className="p-4 space-y-4">
           <h1 className="text-2xl font-bold tracking-tight">Add a place</h1>

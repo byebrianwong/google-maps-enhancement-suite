@@ -39,7 +39,7 @@ export function PlacesList({ places, types }: { places: PlaceSummary[]; types: T
   }));
 
   return (
-    <div className="flex-1 flex flex-col md:flex-row md:h-[calc(100dvh-3.5rem)]">
+    <div className="flex-1 md:flex-none flex flex-col md:flex-row md:h-[calc(100dvh-3.5rem)]">
       <section className="md:w-[440px] md:shrink-0 md:overflow-y-auto md:border-r border-line order-2 md:order-1">
         <div className="p-4 space-y-4">
           <div className="flex items-center justify-between">

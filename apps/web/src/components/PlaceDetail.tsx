@@ -98,7 +98,7 @@ export function PlaceDetail({ place, types, origins, settings }: Props) {
   }
 
   return (
-    <div className="flex-1 flex flex-col md:flex-row md:h-[calc(100dvh-3.5rem)]">
+    <div className="flex-1 md:flex-none flex flex-col md:flex-row md:h-[calc(100dvh-3.5rem)]">
       <section className="md:w-[480px] md:shrink-0 md:overflow-y-auto md:border-r border-line order-2 md:order-1">
         <div className="p-4 space-y-5">
           <div className="flex items-center gap-2">

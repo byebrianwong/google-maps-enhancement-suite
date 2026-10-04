@@ -108,7 +108,7 @@ export function GoNow({ places, types, origins, settings }: Props) {
   }
 
   return (
-    <div className="flex-1 flex flex-col md:flex-row md:h-[calc(100dvh-3.5rem)]">
+    <div className="flex-1 md:flex-none flex flex-col md:flex-row md:h-[calc(100dvh-3.5rem)]">
       {/* Controls + results */}
       <section className="md:w-[440px] md:shrink-0 md:overflow-y-auto md:border-r border-line bg-bg order-2 md:order-1">
         <div className="p-4 space-y-4">

@@ -14,15 +14,21 @@
       <label>Token <input id="token" type="text" spellcheck="false" autocomplete="off" class="mono" /></label>
       <button id="save" type="button">Save and test</button>
       <p id="status" role="status"></p>
+      <h2>Your Google Maps lists</h2>
+      <p id="listsHint" class="muted"></p>
+      <ul id="lists"></ul>
+      <button id="updateAll" type="button" disabled>Update all lists</button>
       <details>
         <summary>How to use it</summary>
         <ol>
-          <li>Open one of your lists in Google Maps on this computer.</li>
-          <li>Click a place. The Park Picker panel appears at the top right.</li>
-          <li>The first time, press Link (or Add) to connect it to your saved place.</li>
-          <li>Click into the place's note, then press <b>Fill note</b> or <span id="shortcut">Alt+Shift+M</span>.</li>
-          <li>Press Done in Google Maps to save the note.</li>
+          <li>Open one of your lists in Google Maps on this computer. The Park Picker panel appears at the top right.</li>
+          <li>Press <b>Update all notes in this list</b>. It fills in every place's note and presses Done for you.</li>
+          <li>The extension remembers each list you open. Next time, <b>Update all lists</b> here does them all.</li>
         </ol>
+        <p class="muted">
+          For one place: open it, click into its note, press <b>Fill note</b> or <span id="shortcut">Alt+Shift+M</span>,
+          then press Done in Google Maps.
+        </p>
       </details>
     </main>
     <script src="popup.js"></script>

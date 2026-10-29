@@ -5,6 +5,9 @@ const token = document.getElementById("token") as HTMLInputElement;
 const save = document.getElementById("save") as HTMLButtonElement;
 const status = document.getElementById("status") as HTMLParagraphElement;
 const shortcut = document.getElementById("shortcut") as HTMLSpanElement;
+const lists = document.getElementById("lists") as HTMLUListElement;
+const listsHint = document.getElementById("listsHint") as HTMLParagraphElement;
+const updateAll = document.getElementById("updateAll") as HTMLButtonElement;
 
 function show(text: string, tone: "ok" | "warn") {
   status.textContent = text;
@@ -22,6 +25,33 @@ async function test() {
     show(res.error, "warn");
   }
 }
+
+// Lists the extension has seen open in Google Maps. "Update all lists"
+// opens each one in a new tab and updates every note in it.
+async function showLists() {
+  const saved = await send({ type: "getLists" });
+  lists.replaceChildren(
+    ...saved.map((l) => {
+      const li = document.createElement("li");
+      li.textContent = l.title;
+      return li;
+    }),
+  );
+  listsHint.textContent =
+    saved.length > 0
+      ? "Update all lists opens each of these in a new tab and updates every note in it."
+      : "Open each of your lists in Google Maps once. Lists named like a type's Google Maps list (set in the app's type settings) show up here.";
+  updateAll.disabled = saved.length === 0;
+}
+
+updateAll.addEventListener("click", async () => {
+  updateAll.disabled = true;
+  const res = await send({ type: "updateAllLists" });
+  if (!res.ok) {
+    show(res.error, "warn");
+    updateAll.disabled = false;
+  }
+});
 
 // Localhost is allowed in the manifest. Any other address needs the
 // person's permission, which Chrome only asks for after a click.
@@ -60,5 +90,6 @@ save.addEventListener("click", async () => {
   const commands = await chrome.commands.getAll();
   const fill = commands.find((c) => c.name === "fill-note");
   shortcut.textContent = fill?.shortcut || "a shortcut you set at chrome://extensions/shortcuts";
+  await showLists();
   if (config.token) await test();
 })();

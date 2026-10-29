@@ -52,6 +52,30 @@ export function nameSimilarity(a: string, b: string): number {
   return shared / Math.min(ta.size, tb.size);
 }
 
+// A name with case, accents, punctuation, emoji and spacing taken out, for
+// comparing two spellings of the same name: "Joe's Café" and "joes cafe".
+export function normalizeName(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/['’]/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+export function sameName(a: string, b: string): boolean {
+  const na = normalizeName(a);
+  return na !== "" && na === normalizeName(b);
+}
+
+// The saved places linked to a Google place called `name`. Linking stores
+// Google's name, and a Google Maps list shows that same name, so a list
+// entry can usually be paired with its saved place without opening it.
+export function linkedPlacesNamed<T extends MatchCandidate & { googleName: string | null }>(name: string, places: T[]): T[] {
+  return places.filter((p) => p.googleFid && p.googleName && sameName(p.googleName, name));
+}
+
 export const LIKELY_MAX_METERS = 2000;
 export const LIKELY_MIN_SIMILARITY = 0.6;
 export const NEARBY_MAX_METERS = 400;

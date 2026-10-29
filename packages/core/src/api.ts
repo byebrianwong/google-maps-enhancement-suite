@@ -1,3 +1,4 @@
+import { sameName } from "./match";
 import type { NoteInput } from "./note";
 
 // The JSON the web app serves to the Chrome extension at /api/ext/*.
@@ -50,6 +51,13 @@ export type ExtCreateRequest = {
 };
 
 export type ExtPlaceResponse = { place: ExtPlace };
+
+// The type whose Google Maps list has this title, if any. Case, emoji and
+// punctuation don't count, so a list titled "Dog Parks 🐕" is the type
+// whose list name is "Dog parks".
+export function typeForListTitle<T extends Pick<ExtType, "listName">>(title: string, types: T[]): T | null {
+  return types.find((t) => sameName(t.listName, title)) ?? null;
+}
 
 // Which note to write. "all" gives one line per type the place has. A type
 // id gives the note for that type's Google Maps list.

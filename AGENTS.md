@@ -24,8 +24,12 @@ Rules:
   people's Google Maps notes. Changing it means old notes stop being
   recognised and get a second block added. Keep `splitNote` able to read
   the old format if you change it.
-- Google Maps page structure is not a stable interface. The extension
-  only reads the page URL and the field the person is typing in. Do not
-  add code that depends on Google's class names.
+- Google Maps page structure is not a stable interface. Do not add code
+  that depends on Google's class names. For a single place, the extension
+  only reads the page URL and the field the person is typing in. Updating
+  a whole list has to read and click Google's list page; all of that is in
+  `apps/extension/src/list-page.ts`, and it goes by roles, aria labels,
+  headings and button text. Keep any new dependency on Google's page in
+  that file.
 - Before finishing: `npm run typecheck`, `npm test`, `npm run lint`, and
   for extension changes `npm run test:e2e`.

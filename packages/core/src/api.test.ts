@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { noteInputFor, type NotePlace, type NoteTypeConfig } from "./api";
+import { noteInputFor, typeForListTitle, type NotePlace, type NoteTypeConfig } from "./api";
 
 const dog: NoteTypeConfig = {
   id: "dog",
@@ -56,4 +56,15 @@ test("a list note for a type the place does not have is empty", () => {
   const onlyDog = { ...place, typeIds: ["dog"] };
   assert.deepEqual(noteInputFor(onlyDog, [dog, baby], "baby"), { types: [], lastVisitAt: 123 });
   assert.deepEqual(noteInputFor(place, [dog, baby], "gone"), { types: [], lastVisitAt: 123 });
+});
+
+test("a Google Maps list is matched to the type with that list name", () => {
+  const types = [
+    { id: "dog", listName: "Dog parks" },
+    { id: "baby", listName: "Baby park" },
+  ];
+  assert.equal(typeForListTitle("Dog parks", types)?.id, "dog");
+  assert.equal(typeForListTitle("dog Parks 🐕", types)?.id, "dog");
+  assert.equal(typeForListTitle("Baby parks", types), null);
+  assert.equal(typeForListTitle("", types), null);
 });

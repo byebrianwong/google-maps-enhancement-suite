@@ -15,3 +15,6 @@ button:disabled { opacity: 0.6; }
 details { color: #4b5946; }
 summary { cursor: pointer; font-weight: 600; }
 ol { padding-left: 18px; margin: 6px 0 0; }
+details .muted { margin-top: 6px; }
+#lists { margin: 0; padding-left: 18px; }
+#lists:empty { display: none; }

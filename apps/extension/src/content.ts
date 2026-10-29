@@ -1,17 +1,22 @@
 // Runs on Google Maps pages. Shows a small panel with your rating for the
-// place that is open, and fills it into the note field you are editing.
+// place that is open, and puts it into the place's note in your lists.
+//
+// With one of your lists open, "Update all notes in this list" goes through
+// every place in it: it fills in each note and presses Done, linking places
+// to the app on the way when the match is clear (bulk.ts, list-page.ts). The
+// popup's "Update all lists" opens each list you have opened before and does
+// the same there.
+//
+// For a single place you can still do it by hand: click into the place's
+// note, press "Fill note" (or the keyboard shortcut), then press Done in
+// Google Maps. That way depends only on the field you are typing in.
 //
 // You pick which of your Google Maps lists the note is for. "All types"
 // writes one line per type. One type's list, say "Dog parks", writes that
-// type's score and, if the type is set to, each of its ratings. Google's
-// page does not say which list you are in, so the choice is yours, and it is
-// remembered because you usually go through one list at a time.
-//
-// It does not click around Google Maps on its own. You open the place's note
-// in your list, then press "Fill note" (or the keyboard shortcut). The panel
-// writes the moons into that field, keeps your own text below them, and you
-// press Done in Google Maps. This way it does not depend on how Google's page
-// is built, only on the field you are typing in.
+// type's score and, if the type is set to, each of its ratings. When a list
+// is open whose name matches a type's list name, that type is picked for
+// you. The choice is remembered, because you usually go through one list at
+// a time.
 
 import {
   buildNote,
@@ -22,13 +27,18 @@ import {
   moons,
   noteInputFor,
   parseGoogleMapsUrl,
+  sameName,
+  typeForListTitle,
   type ExtPlace,
   type NoteTarget,
   type ExtPlacesResponse,
   type GooglePlaceRef,
   type MatchResult,
 } from "@repo/core";
-import { DEFAULT_CONFIG, send, type Config, type TabMessage } from "./messages";
+import { emptySummary, updateListNotes, type ListSummary } from "./bulk";
+import { deepActiveElement, isEditable, isSearchBox, readValue, writeValue } from "./fields";
+import { describePage, findListPanel, looksLikeListUrl, waitFor, type ListPanel } from "./list-page";
+import { DEFAULT_CONFIG, send, type Config, type ListTurn, type TabMessage } from "./messages";
 import { PANEL_CSS } from "./panel-css";
 
 declare global {
@@ -47,6 +57,8 @@ const NOTE_TARGET_KEY = "noteTarget"; // in chrome.storage.local
 
 type Status = { text: string; tone: "ok" | "warn" };
 
+type Run = { title: string; done: number; total: number; name: string; stop: boolean };
+
 type State = {
   href: string;
   placeKey: string | null;
@@ -61,6 +73,13 @@ type State = {
   addTypeIds: string[] | null; // null means "all types"
   rejected: Set<string>; // "placeKey|appPlaceId" pairs the person said were wrong
   noteTarget: NoteTarget; // which list the note is for
+  list: ListPanel | null; // the Google Maps list open on the page
+  listMissingSince: number | null; // when the address started to look like a list with no notes found
+  autoTargetFor: string | null; // the list title the note target was last picked for
+  run: Run | null; // updating every note in the list
+  turn: ListTurn | null; // this tab is part of "Update all lists"
+  summary: ListSummary | null; // how the last run went
+  allSummaries: ListSummary[] | null; // how "Update all lists" went
 };
 
 function main() {
@@ -104,6 +123,13 @@ function main() {
     addTypeIds: null,
     rejected: new Set(),
     noteTarget: "all",
+    list: null,
+    listMissingSince: null,
+    autoTargetFor: null,
+    run: null,
+    turn: null,
+    summary: null,
+    allSummaries: null,
   };
 
   try {
@@ -113,7 +139,7 @@ function main() {
     .get(NOTE_TARGET_KEY)
     .then((stored) => {
       const saved = stored[NOTE_TARGET_KEY];
-      if (typeof saved === "string" && saved !== state.noteTarget) {
+      if (typeof saved === "string" && saved !== state.noteTarget && state.autoTargetFor == null) {
         state.noteTarget = saved;
         render();
       }
@@ -140,10 +166,14 @@ function main() {
     render();
   }
 
+  function placeKeyFor(ref: GooglePlaceRef): string {
+    return ref.fid ?? `${ref.name}@${ref.lat.toFixed(5)},${ref.lng.toFixed(5)}`;
+  }
+
   function onUrlChange() {
     state.href = location.href;
     const ref = parseGoogleMapsUrl(location.href);
-    const key = ref ? ref.fid ?? `${ref.name}@${ref.lat.toFixed(5)},${ref.lng.toFixed(5)}` : null;
+    const key = ref ? placeKeyFor(ref) : null;
     if (key === state.placeKey) return; // same place, only the map moved
     state.placeKey = key;
     state.ref = ref;
@@ -271,15 +301,131 @@ function main() {
     }
   }
 
+  // ---- the open list -------------------------------------------------------
+
+  // Looks for a list on the page. Google draws it a moment after the
+  // address changes, so this runs every second.
+  function detectList() {
+    if (state.run) return;
+    const found = findListPanel();
+    const missing = !found && looksLikeListUrl(location.href);
+    state.listMissingSince = missing ? state.listMissingSince ?? Date.now() : null;
+    const changed = (found?.title ?? null) !== (state.list?.title ?? null);
+    state.list = found;
+    if (changed) {
+      state.summary = null;
+      state.allSummaries = null;
+      if (found) onListOpened(found);
+    }
+    if (changed || missing) render();
+  }
+
+  async function onListOpened(list: ListPanel) {
+    if (!state.data) await load();
+    const type = typeForListTitle(list.title, state.data?.types ?? []);
+    if (!type || state.list?.title !== list.title) return;
+    if (state.autoTargetFor !== list.title) {
+      state.autoTargetFor = list.title;
+      if (state.noteTarget !== type.id) setNoteTarget(type.id);
+    }
+    // Remember the list's address for "Update all lists". An address that
+    // is only a map position would not open the list again.
+    if (!parseGoogleMapsUrl(location.href) && /\/data=|\/placelists\//.test(location.href)) {
+      send({ type: "rememberList", list: { typeId: type.id, title: list.title, url: location.href } }).catch(() => {});
+    }
+  }
+
+  async function runList(list: ListPanel, target: NoteTarget): Promise<ListSummary> {
+    state.run = { title: list.title, done: 0, total: 0, name: "", stop: false };
+    state.summary = null;
+    state.allSummaries = null;
+    state.status = null;
+    render();
+    let summary: ListSummary;
+    try {
+      summary = await updateWith(list, target);
+    } catch (err) {
+      summary = emptySummary(list.title, `Something went wrong: ${(err as Error).message}`);
+    }
+    state.run = null;
+    state.summary = summary;
+    state.list = findListPanel();
+    render();
+    return summary;
+  }
+
+  async function updateWith(list: ListPanel, target: NoteTarget): Promise<ListSummary> {
+    const res = await send({ type: "getPlaces" });
+    if (!res.ok) return emptySummary(list.title, res.error);
+    state.data = res.data;
+    return updateListNotes(list, {
+      data: res.data,
+      target,
+      shouldStop: () => state.run?.stop ?? true,
+      onProgress: (done, total, name) => {
+        if (state.run) state.run = { ...state.run, done, total, name };
+        render();
+      },
+      link: async (body) => {
+        const linked = await send({ type: "link", body });
+        if (!linked.ok) return { error: linked.error };
+        replacePlace(linked.data.place);
+        return linked.data.place;
+      },
+      rejected: (ref, placeId) => state.rejected.has(`${placeKeyFor(ref)}|${placeId}`),
+    });
+  }
+
+  function startRun() {
+    const list = findListPanel();
+    if (!list) {
+      setStatus("Couldn't find the list on the page any more.", "warn");
+      return;
+    }
+    runList(list, noteTarget());
+  }
+
+  // This tab was opened by "Update all lists": update the list it shows.
+  async function runTurn(turn: ListTurn) {
+    state.turn = turn;
+    render();
+    const wanted = (p: ListPanel | null) => (p && sameName(p.title, turn.list.title) ? p : null);
+    const list = await waitFor(() => wanted(findListPanel()), 30_000);
+    let summary: ListSummary;
+    if (list) {
+      summary = await runList(list, turn.list.typeId);
+    } else {
+      const other = findListPanel();
+      summary = emptySummary(
+        turn.list.title,
+        other
+          ? `Expected the list "${turn.list.title}" but "${other.title}" opened.`
+          : "The list didn't open. Open it in Google Maps once more so the extension saves its current address.",
+      );
+      state.summary = summary;
+    }
+    await send({ type: "listDone", summary });
+  }
+
+  async function copyPageDetails() {
+    try {
+      await navigator.clipboard.writeText(describePage());
+      setStatus("Copied what the extension sees on this page. Paste it into a bug report.");
+    } catch {
+      setStatus("Couldn't copy.", "warn");
+    }
+  }
+
   // ---- rendering ----------------------------------------------------------
 
   function render() {
     panel.replaceChildren();
     panel.classList.toggle("collapsed", state.collapsed);
 
+    const run = state.run;
     const head = el("div", { class: "head" }, [
-      el("span", { class: "brand" }, ["🌙 Park Picker"]),
-      state.collapsed ? null : iconButton("↻", "Reload ratings from the app", () => load()),
+      el("span", { class: "brand" }, [run && run.total ? `🌙 Park Picker · ${run.done + 1}/${run.total}` : "🌙 Park Picker"]),
+      state.collapsed || run ? null : iconButton("↻", "Reload ratings from the app", () => load()),
       iconButton(state.collapsed ? "▾" : "▴", state.collapsed ? "Show" : "Hide", () => {
         state.collapsed = !state.collapsed;
         try {
@@ -294,8 +440,12 @@ function main() {
     const body = el("div", { class: "body" });
     panel.append(body);
 
+    if (state.turn || run || state.list || state.summary || state.allSummaries) renderList(body);
+    if (state.turn || run) return;
+
     if (!state.ref) {
-      body.append(el("div", { class: "muted" }, ["Open a place to see your rating for it."]));
+      if (!state.list && !state.summary && !state.allSummaries) renderNoPlace(body);
+      appendStatus(body);
       return;
     }
     if (state.error) {
@@ -318,7 +468,145 @@ function main() {
     else if (match.kind === "likely") renderLikely(body, match.place, match.meters);
     else renderNone(body, match.nearby);
 
+    appendStatus(body);
+  }
+
+  function appendStatus(body: HTMLElement) {
     if (state.status) body.append(el("div", { class: `status ${state.status.tone}` }, [state.status.text]));
+  }
+
+  function renderNoPlace(body: HTMLElement) {
+    if (state.listMissingSince != null && Date.now() - state.listMissingSince > 4000) {
+      body.append(
+        el("div", { class: "muted" }, [
+          "This looks like one of your lists, but the extension can't find the notes in it. Google may have changed the page.",
+        ]),
+        el("div", { class: "actions" }, [button("Copy page details", copyPageDetails)]),
+      );
+      return;
+    }
+    body.append(el("div", { class: "muted" }, ["Open one of your lists to update its notes, or open a place to see your rating for it."]));
+  }
+
+  function noteChips(): HTMLElement {
+    const target = noteTarget();
+    return el("div", { class: "chips", role: "group", "aria-label": "Note for which list" }, [
+      chip("All types", target === "all", () => setNoteTarget("all"), "One line per type, for lists that mix types"),
+      ...(state.data?.types ?? []).map((t) =>
+        chip(`${t.emoji} ${t.listName}`, target === t.id, () => setNoteTarget(t.id), `For your "${t.listName}" list in Google Maps`),
+      ),
+    ]);
+  }
+
+  function renderList(body: HTMLElement) {
+    const box = el("div", { class: "list" });
+    body.append(box);
+    if (state.turn) {
+      box.append(el("div", { class: "label" }, [`Updating all lists · ${state.turn.position} of ${state.turn.count}`]));
+    }
+
+    const run = state.run;
+    if (run) {
+      const stop = () => {
+        if (state.run && !state.run.stop) {
+          state.run.stop = true;
+          render();
+        }
+      };
+      const stopButton = button(run.stop ? "Stopping…" : "Stop", stop, { disabled: run.stop });
+      // The panel is redrawn after each place; acting on pointerdown means a
+      // redraw between press and release can't lose the click.
+      stopButton.addEventListener("pointerdown", stop);
+      box.append(
+        el("div", { class: "title" }, [`📋 ${run.title || "This list"}`]),
+        el("div", { class: "bar" }, [el("div", { class: "fill", style: `width: ${run.total ? (100 * run.done) / run.total : 0}%` })]),
+        el("div", { class: "muted" }, [run.total ? `${run.done + 1} of ${run.total} · ${run.name}` : "Loading every place in the list…"]),
+        el("div", { class: "actions" }, [stopButton]),
+        // Chrome slows down timers in background tabs.
+        el("div", { class: "muted" }, ["Keep this tab in front until it's done."]),
+      );
+      return;
+    }
+    if (state.turn) {
+      if (state.summary) {
+        renderSummary(box, state.summary);
+        if (state.turn.position < state.turn.count) box.append(el("div", { class: "muted" }, ["Opening the next list…"]));
+      } else {
+        box.append(el("div", { class: "muted" }, [`Opening ${state.turn.list.title}…`]));
+      }
+      return;
+    }
+
+    const list = state.list;
+    if (list) {
+      const type = typeForListTitle(list.title, state.data?.types ?? []);
+      box.append(el("div", { class: "title" }, [`📋 ${list.title || "This list"}`]));
+      if (state.error && !state.ref) {
+        box.append(
+          el("div", { class: "error" }, [state.error]),
+          el("div", { class: "actions" }, [
+            button("Settings", () => send({ type: "openOptions" })),
+            button("Try again", () => load()),
+          ]),
+        );
+      } else if (!state.error) {
+        add(
+          box,
+          el("div", { class: "label" }, ["Note for"]),
+          noteChips(),
+          type
+            ? null
+            : el("div", { class: "muted" }, [
+                `No type's Google Maps list is called "${list.title}", so check which note to write. List names are set in the app's type settings.`,
+              ]),
+          el("div", { class: "actions" }, [
+            button(state.summary ? "Update again" : "Update all notes in this list", startRun, {
+              primary: true,
+              disabled: !state.data,
+            }),
+          ]),
+          el("div", { class: "muted" }, [
+            "Fills in each place's note and presses Done for you. Places not linked to the app yet are opened once to link them.",
+          ]),
+        );
+      }
+    }
+    for (const s of state.allSummaries ?? (state.summary ? [state.summary] : [])) renderSummary(box, s);
+  }
+
+  function renderSummary(box: HTMLElement, s: ListSummary) {
+    const counts = [
+      s.updated.length ? `${s.updated.length} updated` : null,
+      s.unchanged.length ? `${s.unchanged.length} already up to date` : null,
+      s.skipped.length ? `${s.skipped.length} skipped` : null,
+    ].filter(Boolean);
+    const headline = s.error ?? (s.stopped ? "Stopped." : counts.length ? "Done." : "No places to update.");
+    const warn = !!s.error || s.skipped.length > 0;
+    const section = el("div", { class: "summary" }, [
+      el("div", { class: `status ${warn ? "warn" : "ok"}` }, [
+        el("b", {}, [s.list || "This list"]),
+        ` · ${headline}${counts.length ? ` ${counts.join(", ")}.` : ""}`,
+      ]),
+    ]);
+    if (s.linked.length) section.append(el("div", { class: "muted" }, [`Linked to the app: ${s.linked.join(", ")}.`]));
+    if (s.wrongType.length) {
+      section.append(
+        el("div", { class: "muted" }, [`Not this list's type in the app, so the note has no score: ${s.wrongType.join(", ")}.`]),
+      );
+    }
+    if (s.skipped.length) {
+      section.append(
+        el(
+          "ul",
+          { class: "skipped" },
+          s.skipped.map((x) => el("li", {}, [el("b", {}, [x.name]), `: ${x.reason}`])),
+        ),
+      );
+    }
+    if (s.error || s.skipped.some((x) => x.page)) {
+      section.append(el("div", { class: "actions" }, [button("Copy page details", copyPageDetails)]));
+    }
+    box.append(section);
   }
 
   function renderLinked(body: HTMLElement, place: ExtPlace) {
@@ -326,7 +614,8 @@ function main() {
     const types = allTypes.filter((t) => place.typeIds.includes(t.id));
     const target = noteTarget();
     const targetType = allTypes.find((t) => t.id === target);
-    body.append(
+    add(
+      body,
       el("div", { class: "title" }, [
         el("a", { href: `${state.config.appUrl}/places/${place.id}`, target: "_blank", rel: "noopener" }, [place.name]),
       ]),
@@ -345,13 +634,9 @@ function main() {
       el("div", { class: "muted" }, [
         place.lastVisitAt ? `Last visit ${formatShortDate(place.lastVisitAt)}` : "No visits logged",
       ]),
-      el("div", { class: "label" }, ["Note for"]),
-      el("div", { class: "chips", role: "group", "aria-label": "Note for which list" }, [
-        chip("All types", target === "all", () => setNoteTarget("all"), "One line per type, for lists that mix types"),
-        ...allTypes.map((t) =>
-          chip(`${t.emoji} ${t.listName}`, target === t.id, () => setNoteTarget(t.id), `For your "${t.listName}" list in Google Maps`),
-        ),
-      ]),
+      // With a list open, its section above already has these.
+      state.list ? null : el("div", { class: "label" }, ["Note for"]),
+      state.list ? null : noteChips(),
       el("pre", { class: "note", "aria-label": "The note Fill writes" }, [noteFor(place)]),
       el("div", { class: "actions" }, [
         button("Fill note", fill, { primary: true, title: "Fill the note field you clicked into (Alt+Shift+M)" }),
@@ -423,17 +708,30 @@ function main() {
 
   chrome.runtime.onMessage.addListener((msg: TabMessage) => {
     if (msg.type === "fill-note") fill();
+    if (msg.type === "allListsDone") {
+      state.turn = null;
+      state.summary = null;
+      state.allSummaries = msg.summaries;
+      render();
+    }
   });
-  // Google Maps changes the URL without reloading the page.
+  // Google Maps changes the URL without reloading the page. While a list is
+  // being updated, places open and close; the panel catches up afterwards.
   setInterval(() => {
-    if (location.href !== state.href) onUrlChange();
+    if (location.href !== state.href && !state.run) onUrlChange();
   }, 400);
+  setInterval(detectList, 1000);
   // Ratings may have changed in the app while this tab was in the background.
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && state.ref) load();
+    if (document.visibilityState === "visible" && (state.ref || state.list) && !state.run) load();
   });
   onUrlChange();
   render();
+  send({ type: "tabReady" })
+    .then((turn) => {
+      if (turn) runTurn(turn);
+    })
+    .catch(() => {});
 }
 
 // ---- helpers ----------------------------------------------------------------
@@ -443,8 +741,12 @@ type Child = Node | string | null | undefined;
 function el(tag: string, attrs: Record<string, string> = {}, children: Child[] = []): HTMLElement {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
-  for (const c of children) if (c != null) node.append(c);
+  add(node, ...children);
   return node;
+}
+
+function add(parent: HTMLElement, ...children: Child[]) {
+  for (const c of children) if (c != null) parent.append(c);
 }
 
 function button(
@@ -475,53 +777,11 @@ function formatMeters(m: number): string {
   return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`;
 }
 
-function isEditable(el: Element): el is HTMLElement {
-  if (el instanceof HTMLTextAreaElement) return !el.disabled && !el.readOnly;
-  if (el instanceof HTMLInputElement) return ["text", "search", ""].includes(el.type) && !el.disabled && !el.readOnly;
-  return el instanceof HTMLElement && el.isContentEditable;
-}
-
-function isSearchBox(el: HTMLElement): boolean {
-  return el instanceof HTMLInputElement && (el.name === "q" || el.id === "searchboxinput" || el.getAttribute("role") === "combobox");
-}
-
 // The field to fill: the focused one, or the last one focused if the click
 // on the panel took focus away anyway.
 function pickTarget(host: HTMLElement, lastEditable: HTMLElement | null): HTMLElement | null {
-  let active: Element | null = document.activeElement;
-  while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
+  const active = deepActiveElement();
   if (active && active !== host && !host.contains(active) && isEditable(active)) return active;
   if (lastEditable?.isConnected) return lastEditable;
   return null;
-}
-
-function readValue(el: HTMLElement): string {
-  if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) return el.value;
-  return el.innerText;
-}
-
-// Types the text into the field the way a paste would, so the page's own
-// code sees a normal edit and its Done/Save button picks it up.
-function writeValue(el: HTMLElement, text: string) {
-  el.focus();
-  if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) {
-    el.select();
-    const ok = document.execCommand("insertText", false, text);
-    if (!ok || el.value !== text) {
-      const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-      Object.getOwnPropertyDescriptor(proto, "value")?.set?.call(el, text);
-      el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertReplacementText", data: text }));
-    }
-    el.dispatchEvent(new Event("change", { bubbles: true }));
-    return;
-  }
-  const range = document.createRange();
-  range.selectNodeContents(el);
-  const sel = window.getSelection();
-  sel?.removeAllRanges();
-  sel?.addRange(range);
-  if (!document.execCommand("insertText", false, text)) {
-    el.innerText = text;
-    el.dispatchEvent(new InputEvent("input", { bubbles: true }));
-  }
 }

@@ -11,8 +11,9 @@ Personal additions to Google Maps. The Chrome extension is called
 
 Google Maps has no way for other apps to edit your saved lists. The
 extension works around that by running inside your own signed-in Chrome.
-It only fills the note field you are editing; you still press Done in
-Google Maps yourself.
+With one of your lists open, one button fills in every place's note and
+presses Done, the way you would by hand. The extension's popup can do the
+same for all your lists.
 
 ## Run it
 

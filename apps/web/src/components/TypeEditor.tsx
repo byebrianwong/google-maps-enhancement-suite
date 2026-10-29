@@ -261,8 +261,8 @@ function TypeEditor({ type, places, ratingCounts, onSaved }: Props & { onSaved: 
                 onChange={(e) => patch({ googleListName: e.target.value })}
               />
               <p className="text-xs text-ink-3 mt-1">
-                The name of your list in Google Maps that holds these places. The Chrome extension shows it so you can pick
-                which list you are filling notes in. Leave it empty to use the type&apos;s name.
+                The name of your list in Google Maps that holds these places. When you open a list with this name, the
+                Chrome extension writes this type&apos;s note into it. Leave it empty to use the type&apos;s name.
               </p>
             </div>
           </section>

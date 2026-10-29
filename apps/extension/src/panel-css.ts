@@ -16,7 +16,7 @@ export const PANEL_CSS = `
 .brand { font-weight: 700; flex: 1; white-space: nowrap; }
 .icon-btn { border: 0; background: transparent; cursor: pointer; font-size: 14px; padding: 2px 6px; border-radius: 8px; color: #4b5946; }
 .icon-btn:hover { background: #dfe4d7; }
-.body { padding: 10px 12px 12px; display: grid; gap: 8px; }
+.body { padding: 10px 12px 12px; display: grid; gap: 8px; max-height: calc(100vh - 140px); overflow: auto; }
 .title { font-weight: 700; font-size: 14px; }
 .title a { color: inherit; text-decoration: none; }
 .title a:hover { text-decoration: underline; }
@@ -49,4 +49,9 @@ pre.note {
 }
 .nearby { display: grid; gap: 4px; }
 .nearby button { text-align: left; }
+.list, .summary { display: grid; gap: 8px; }
+.list + * { border-top: 1px solid #dfe4d7; padding-top: 8px; }
+.bar { height: 6px; border-radius: 999px; background: #eef1e8; overflow: hidden; }
+.bar .fill { height: 100%; background: #2f855a; transition: width 0.3s; }
+ul.skipped { margin: 0; padding-left: 16px; font-size: 12px; color: #4b5946; display: grid; gap: 2px; }
 `;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { matchPlace, nameSimilarity, type MatchCandidate } from "./match";
+import { linkedPlacesNamed, matchPlace, nameSimilarity, normalizeName, sameName, type MatchCandidate } from "./match";
 
 const p = (id: string, name: string, lat: number, lng: number, googleFid: string | null = null): MatchCandidate => ({
   id, name, lat, lng, googleFid,
@@ -53,4 +53,23 @@ test("offers nearby places when no name matches", () => {
 test("a place already linked elsewhere is not offered again", () => {
   const r = matchPlace(google("Duboce Park", 37.7694, -122.4335, "0xccc:0xddd"), [linked]);
   assert.equal(r.kind, "none");
+});
+
+test("names compare without case, accents, apostrophes or emoji", () => {
+  assert.equal(normalizeName("  Joe’s Café & Bar 🐕 "), "joes cafe bar");
+  assert.ok(sameName("Mission Dolores Park", "mission  dolores park"));
+  assert.ok(!sameName("Parc Lafontaine", "Parc La-Fontaine"));
+  assert.ok(!sameName("", ""));
+  assert.ok(sameName("東京公園", "東京公園"));
+});
+
+test("a list entry is paired with the place linked under Google's name", () => {
+  const named = (id: string, googleName: string | null, googleFid: string | null) => ({ ...p(id, "x", 0, 0, googleFid), googleName });
+  const places = [
+    named("1", "Mission Dolores Park", "0x1:0x1"),
+    named("2", "Mission Dolores Park", null), // not linked, so its name is not Google's
+    named("3", "Duboce Park", "0x3:0x3"),
+  ];
+  assert.deepEqual(linkedPlacesNamed("Mission Dolores Park", places).map((x) => x.id), ["1"]);
+  assert.deepEqual(linkedPlacesNamed("Alamo Square", places), []);
 });
